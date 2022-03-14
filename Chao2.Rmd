@@ -1,0 +1,305 @@
+---
+title: "Estimating species richness from inventory plots"
+author:
+  - name: "Eric Marcon"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+url: https://EricMarcon.github.io/Chao2-Aggregated/
+github-repo: EricMarcon/Chao2-Aggregated
+# Language
+lang: en-US
+# Bibliography
+bibliography: references.bib
+biblio-style: chicago
+# LaTeX
+preamble: >
+  \hyphenation{bio-di-ver-si-ty sap-lings}
+# Print table of contents in PDFs?
+pdftoc: false
+# If true, choose its depth
+toc-depth: 3
+# Do not modify
+always_allow_html: yes
+output:
+  rmdformats::downcute:
+    use_bookdown: yes
+    lightbox: yes
+  bookdown::pdf_book:
+    template: latex/template.tex
+    citation_package: natbib
+    latex_engine: xelatex
+    keep_tex: yes
+---
+
+```{r DoNotModify, include=FALSE}
+### Utilities. Do not modify.
+# Installation of packages if necessary
+InstallPackages <- function(Packages) {
+  InstallPackage <- function(Package) {
+    if (!Package %in% installed.packages()[, 1]) {
+      install.packages(Package, repos="https://cran.rstudio.com/")
+    }
+  }
+  invisible(sapply(Packages, InstallPackage))
+}
+
+# Basic packages
+InstallPackages(c("bookdown", "formatR", "kableExtra", "ragg"))
+
+# kableExtra must be loaded 
+if (knitr::opts_knit$get("rmarkdown.pandoc.to") == "docx") {
+  # Word output (https://stackoverflow.com/questions/35144130/in-knitr-how-can-i-test-for-if-the-output-will-be-pdf-or-word)
+  # Do not use autoformat (https://github.com/haozhu233/kableExtra/issues/308)
+  options(kableExtra.auto_format = FALSE)
+}
+library("kableExtra")
+
+# Chunk font size hook: allows size='small' or any valid Latex font size in chunk options
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  ifelse(options$size != "normalsize", paste0("\n \\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+```
+
+```{r Options, include=FALSE}
+### Customized options for this document
+# Add necessary packages here
+Packages <- c("tidyverse", "remotes", "spatstat")
+# Install them
+InstallPackages(Packages)
+
+# From GitHub
+remotes::install_github("EricMarcon/SpatDiv")
+
+# knitr options
+knitr::opts_chunk$set(
+  cache = FALSE,   # Cache chunk results
+  echo = TRUE,     # Show/Hide R chunks
+  warning = FALSE, # Show/Hide warnings
+  message = FALSE, # Show/Hide messages
+  # Figure alignment and size
+  fig.align = 'center', out.width = '80%',
+  # Graphic devices (ragg_png is better than standard png)
+  dev = c("ragg_png", "pdf"),
+  # Code chunk format
+  tidy = TRUE, tidy.opts = list(blank=FALSE, width.cutoff=50),
+  size = "scriptsize", knitr.graphics.auto_pdf = TRUE
+  )
+options(width = 50)
+
+# ggplot style
+library("tidyverse")
+theme_set(theme_bw())
+theme_update(panel.background=element_rect(fill="transparent", colour=NA),
+             plot.background=element_rect(fill="transparent", colour=NA))
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+
+# Random seed
+set.seed(973)
+```
+
+# Data
+
+Simulate a spatialized community. Parameters:
+
+```{r}
+library("SpatDiv")
+window_size <- 2000
+thomas_scale <- window_size/10
+thomas_mu <- 10
+unit_name <- c("meter", "meters")
+trees_n_per_area <- 500/10000
+species_n <- 500
+```
+
+Build the community:
+
+```{r}
+library("spatstat")
+rSpCommunity(n = 1, 
+             size = window_size^2 * trees_n_per_area, 
+             S = species_n, 
+             Spatial = "Thomas", scale = thomas_scale, mu = thomas_mu,
+             win = square(r=window_size, unitname=unit_name)
+             ) -> spCommunity
+# Number of trees
+spCommunity$n
+```
+
+Plot parameters
+```{r}
+# Plot side length
+side_length <- 30
+# Number of plots
+plots_n <- 200
+```
+
+Build the plots
+
+```{r}
+# Draw random plots
+X_0 <- runif(plots_n, max = window_size)
+Y_0 <- runif(plots_n, max = window_size)
+# List of windows
+plots_windows <- solapply(seq_along(X_0), function(i) 
+  owin(xrange=c(X_0[i], X_0[i] + side_length), yrange=c(Y_0[i], Y_0[i] + side_length), unitname=unit_name))
+# Coordinates of the plots in a dataframe
+plots_coords <- data.frame(Plot=seq_len(plots_n), X=X_0, Y=Y_0)
+```
+
+Draw the plots
+
+```{r}
+# spatstat
+# plot(intersect.owin(spCommunity$window, union.owin(plots_windows)))
+
+# ggplot
+window_all <- data.frame(xmin = c(spCommunity$window$xrange[1], pmin(X_0, window_size-side_length)),
+                         xmax = c(spCommunity$window$xrange[2], pmin(X_0 + side_length, window_size)),
+                         ymin = c(spCommunity$window$yrange[1], pmin(Y_0, window_size-side_length)),
+                         ymax = c(spCommunity$window$yrange[2], pmin(Y_0 + side_length, window_size))
+                         )
+library("ggplot2")
+gg_plots <- ggplot() +
+  geom_rect(data = window_all, mapping = aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), color="black", fill="transparent") +
+  coord_fixed()
+print(gg_plots)
+```
+
+Draw the first plot
+
+```{r}
+plot_to_draw <- plots_windows[[1]]
+library("dbmss")
+autoplot(spCommunity[plot_to_draw])
+```
+
+
+
+# Inventory
+
+Inventory of a plot
+
+```{r}
+plot_trees <- function(spCommunity, side_length, x_0, y_0) {
+  x_max <- spCommunity$window$xrange[2]
+  y_max <- spCommunity$window$yrange[2]
+
+  # The plot must be in the window
+  if ((x_0 + side_length) > x_max) x_0 <- x_max - side_length
+  if ((y_0 + side_length) > y_max) y_0 <- y_max - side_length
+
+  # Trees in the plot
+  is_in <- (spCommunity$x >= x_0) & (spCommunity$x <= x_0 + side_length) &
+      (spCommunity$y >= y_0) & (spCommunity$y <= y_0 + side_length)
+  return(is_in)
+}
+```
+
+
+Sample the plots
+
+```{r}
+# Initialize a dataframe with factors
+plots_inventory <- data.frame()
+# Inventory
+for (i in seq_len(plots_n)) {
+  plot_inventory <- data.frame(
+    Plot = i, 
+    Tree = spCommunity$marks$PointType[plot_trees(spCommunity, side_length, X_0[i], Y_0[i])]
+    )
+  plots_inventory <- rbind(plots_inventory, plot_inventory)
+}
+
+# Transform the inventory into an abundance table
+plots_inventory %>%
+  group_by(Plot, Tree) %>%
+  summarise(Abundance = n()) %>%
+  pivot_wider(names_from = Tree, values_from = Abundance, values_fill=0) ->
+  plots_abundances
+```
+
+# Agregate 
+
+Group plots in a grid
+
+```{r}
+# Group plots in a grid
+group_plots <- function(plots, grid_x, grid_y) {
+  grid_xy <- matrix(0, nrow=nrow(plots), ncol=2)
+  for (row in seq_len(nrow(plots))) {
+    grid_xy[row, 1] <- grid_x[max(which(plots$X[row] > grid_x))]
+    grid_xy[row, 2] <- grid_y[max(which(plots$Y[row] > grid_y))]
+  }
+  colnames(grid_xy) <- c("x_grid", "y_grid")
+  return(grid_xy)
+}
+```
+
+
+Estimate total richness according to the size
+
+```{r}
+richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
+
+  grid_x <- seq(x_min, x_max, by=grid_size)
+  grid_y <- seq(y_min, y_max, by=grid_size)
+  plots_gridded <- cbind(plots["Plot"], group_plots(plots, grid_x, grid_y))
+
+  abundances %>%
+    group_by(Plot) %>%
+    summarise_all(sum) %>%
+    inner_join(plots_gridded) %>%
+    select(-Plot) %>%
+    group_by(x_grid, y_grid) %>%
+    summarise_all(sum) ->
+    plots_aggregated
+
+  occurences <- apply(plots_aggregated[, -(1:2)] , 2, function(x) sum(x>0))
+  n <- nrow(plots_aggregated)
+  s_obs <- sum(occurences > 0)
+  s_1 <- sum(occurences == 1)
+  s_2 <- sum(occurences == 2)
+  s_chao2 <- ifelse(s_2 > 0,
+                    s_obs + (n-1) * s_1^2 / 2 / n / s_2, 
+                    s_obs + (n-1) * s_1 * (s_1 -1) / 2 / n 
+                    )
+  return(s_chao2)
+}
+```
+
+Estimate the number of species with a 4-cell grid:
+
+```{r}
+# Example
+richness_gridded(plots_abundances,
+                 plots_coords,
+                 grid_size = window_size/2,
+                 x_max = window_size, y_max = window_size)
+```
+Sensibility to the grid size
+
+```{r}
+sapply(1:5, function(n) richness_gridded(plots_abundances,
+                                         plots_coords,
+                                         window_size/ 2^n))
+
+```
+Plot the smallest grid size
+```{r}
+grid_interval <- window_size/ 2^3
+grid_seq <- seq(grid_interval, window_size * .9999, by=grid_interval)
+gg_plots +
+  geom_hline(yintercept = grid_seq, col="green") +
+  geom_vline(xintercept = grid_seq, col="green")
+```
+
+
+Compare with the estimation of richness from abundance data:
+
+```{r}
+Richness(colSums(plots_abundances[, -1]))
+```
+
+
+`r if (!knitr:::is_latex_output()) '# References {-}'`
