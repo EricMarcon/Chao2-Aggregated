@@ -25,10 +25,15 @@ jobs:
           tinytex::install_tinytex()
         shell: Rscript {0}
       - name: Render Rmarkdown files
+        env:
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
         run: |
-          RMD_PATH=($(ls | grep "[.]Rmd$"))
-          Rscript -e 'for (file in commandArgs(TRUE)) rmarkdown::render(file, "all")' ${RMD_PATH[*]}
-          Rscript -e 'memoiR::build_githubpages()'
+          lapply(list.files(pattern="*.Rmd"), function(file) rmarkdown::render(file, "all"))
+          memoiR::build_githubpages()
+        shell: Rscript {0}
+      - name: GH Pages Theme
+        run: |
+          echo 'theme: jekyll-theme-slate' > docs/_config.yml
       - name: Upload artifact
         uses: actions/upload-artifact@v1
         with:
