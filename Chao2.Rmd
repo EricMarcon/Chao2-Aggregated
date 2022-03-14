@@ -1,5 +1,5 @@
 ---
-title: "Estimating species richness from inventory plots"
+title: "Estimating species richness from an aggregation of inventory plots"
 author:
   - name: "Eric Marcon"
 date: "`r format(Sys.time(), '%d %B %Y')`"
