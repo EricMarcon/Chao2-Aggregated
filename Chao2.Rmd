@@ -124,12 +124,12 @@ The simulation may take time and memory over 100,000 trees.
 
 ```{r}
 library("SpatDiv")
-window_size <- 2000
+window_size <- 20000
 unit_name <- c("meter", "meters")
 trees_n_per_area <- 500/10000
 species_n <- 500
 thomas_scale <- window_size/10
-thomas_mu <- 10
+thomas_mu <- 100
 ```
 
 The community is simulated:
@@ -156,7 +156,7 @@ Their parameters are:
 # Plot side length
 side_length <- 30
 # Number of plots
-plots_n <- 20
+plots_n <- 200
 ```
 
 Random coordinates are drawn:
