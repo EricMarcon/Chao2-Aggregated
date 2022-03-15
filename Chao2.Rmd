@@ -73,7 +73,7 @@ remotes::install_github("EricMarcon/SpatDiv")
 
 # knitr options
 knitr::opts_chunk$set(
-  cache = FALSE,   # Cache chunk results
+  cache = TRUE,   # Cache chunk results
   echo = TRUE,     # Show/Hide R chunks
   warning = FALSE, # Show/Hide warnings
   message = FALSE, # Show/Hide messages
@@ -98,21 +98,41 @@ knitr::opts_chunk$set(dev.args=list(bg="transparent"))
 set.seed(973)
 ```
 
+# Rationale
+
+The Chao2 estimator [@Chao1987] can be used to estimate the richness of a community from occurrence data in sampling plots.
+
+It has been applied by @CazzollaGatti2022 to abundance data of small sample plots aggregated into occurrence data on a grid.
+The question addressed here is the relationship between the aggregation level and the resulting estimation.
+
+The estimation actually does not depend on the aggregation level.
+
 # Data
 
-Simulate a spatialized community. Parameters:
+A large, spatialized community is simulated by package *SpatDiv*.
+The community is log-normal.
+Spatially, tree species are clustered according to a Thomas process.
+
+Parameters are:
+
+- the size of the square window of the simulation, including the name of units,
+- the number of trees per unit area,
+- the number of species, 
+- the parameters of aggregation: the standard deviation of the displacements of points around the cluster centers (`thomas_scale`) and the average number of trees per cluster (`thomas_mu`).
+
+The simulation may take time and memory over 100,000 trees.
 
 ```{r}
 library("SpatDiv")
 window_size <- 2000
-thomas_scale <- window_size/10
-thomas_mu <- 10
 unit_name <- c("meter", "meters")
 trees_n_per_area <- 500/10000
 species_n <- 500
+thomas_scale <- window_size/10
+thomas_mu <- 10
 ```
 
-Build the community:
+The community is simulated:
 
 ```{r}
 library("spatstat")
@@ -126,15 +146,20 @@ rSpCommunity(n = 1,
 spCommunity$n
 ```
 
-Plot parameters
+Square, random inventory plots are simulated in the community.
+
+Their parameters are:
+- their size,
+- their number.
+
 ```{r}
 # Plot side length
 side_length <- 30
 # Number of plots
-plots_n <- 200
+plots_n <- 20
 ```
 
-Build the plots
+Random coordinates are drawn:
 
 ```{r}
 # Draw random plots
@@ -147,7 +172,7 @@ plots_windows <- solapply(seq_along(X_0), function(i)
 plots_coords <- data.frame(Plot=seq_len(plots_n), X=X_0, Y=Y_0)
 ```
 
-Draw the plots
+The plots are mapped:
 
 ```{r}
 # spatstat
@@ -165,8 +190,10 @@ gg_plots <- ggplot() +
   coord_fixed()
 print(gg_plots)
 ```
+The sampling intensity is `r format(plots_n * side_length^2 / window_size^2 * 100, digits=3)`% of the total area.
 
-Draw the first plot
+Any plot can be mapped with its content.
+The first one is:
 
 ```{r}
 plot_to_draw <- plots_windows[[1]]
@@ -178,7 +205,10 @@ autoplot(spCommunity[plot_to_draw])
 
 # Inventory
 
-Inventory of a plot
+The inventory of a plot is made by the `plot_trees()` function which return a boolean vector for all the trees of the community.
+Its value is `TRUE` when a tree is in the plot.
+
+If the plot is partly outside the window, it is moved inside.
 
 ```{r}
 plot_trees <- function(spCommunity, side_length, x_0, y_0) {
@@ -197,7 +227,7 @@ plot_trees <- function(spCommunity, side_length, x_0, y_0) {
 ```
 
 
-Sample the plots
+The inventory is simulated: the trees inside each plot are listed and a abundance by plot dataframe is produced.
 
 ```{r}
 # Initialize a dataframe with factors
@@ -219,9 +249,10 @@ plots_inventory %>%
   plots_abundances
 ```
 
-# Agregate 
+# Aggregation
 
-Group plots in a grid
+plots are grouped in the cells of a grid by the function `group_plots()`.
+It returns a three-column dataframe with the plot names and the *x* and *y* coordinates of the left lower corner of the cell of the grid each plot belongs to.
 
 ```{r}
 # Group plots in a grid
@@ -236,8 +267,7 @@ group_plots <- function(plots, grid_x, grid_y) {
 }
 ```
 
-
-Estimate total richness according to the size
+The `richness_gridded()` function return the estimation of richness by the Chao2 estimator after aggregating the plots of each cell of the grid.
 
 ```{r}
 richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
@@ -247,15 +277,13 @@ richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_m
   plots_gridded <- cbind(plots["Plot"], group_plots(plots, grid_x, grid_y))
 
   abundances %>%
-    group_by(Plot) %>%
-    summarise_all(sum) %>%
     inner_join(plots_gridded) %>%
     select(-Plot) %>%
     group_by(x_grid, y_grid) %>%
     summarise_all(sum) ->
     plots_aggregated
 
-  occurences <- apply(plots_aggregated[, -(1:2)] , 2, function(x) sum(x>0))
+  occurences <- apply(plots_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
   n <- nrow(plots_aggregated)
   s_obs <- sum(occurences > 0)
   s_1 <- sum(occurences == 1)
@@ -268,7 +296,7 @@ richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_m
 }
 ```
 
-Estimate the number of species with a 4-cell grid:
+The estimation of the number of species with a 4-cell grid is:
 
 ```{r}
 # Example
@@ -277,15 +305,22 @@ richness_gridded(plots_abundances,
                  grid_size = window_size/2,
                  x_max = window_size, y_max = window_size)
 ```
-Sensibility to the grid size
+The sensitivity to the grid size is evaluated by dividing it by 2 several times (from 1/2 to 1/32 of the community size).
 
 ```{r}
 sapply(1:5, function(n) richness_gridded(plots_abundances,
                                          plots_coords,
-                                         window_size/ 2^n))
+                                         grid_size = window_size/ 2^n,
+                                         x_max = window_size, 
+                                         y_max = window_size)
+       )
 
 ```
-Plot the smallest grid size
+
+The estimation is very stable.
+
+A grid size equal to 1/8th of the window (64 cells) is shown here:
+
 ```{r}
 grid_interval <- window_size/ 2^3
 grid_seq <- seq(grid_interval, window_size * .9999, by=grid_interval)
@@ -294,8 +329,7 @@ gg_plots +
   geom_vline(xintercept = grid_seq, col="green")
 ```
 
-
-Compare with the estimation of richness from abundance data:
+The estimation of richness could be made directly from the abundance data:
 
 ```{r}
 Richness(colSums(plots_abundances[, -1]))
