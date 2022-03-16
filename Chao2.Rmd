@@ -23,11 +23,6 @@ output:
   rmdformats::downcute:
     use_bookdown: yes
     lightbox: yes
-  bookdown::pdf_book:
-    template: latex/template.tex
-    citation_package: natbib
-    latex_engine: xelatex
-    keep_tex: yes
 ---
 
 ```{r DoNotModify, include=FALSE}
@@ -154,7 +149,7 @@ Their parameters are:
 
 ```{r}
 # Plot side length
-side_length <- 30
+plots_side <- 30
 # Number of plots
 plots_n <- 20
 ```
@@ -167,7 +162,7 @@ X_0 <- runif(plots_n, max = window_size)
 Y_0 <- runif(plots_n, max = window_size)
 # List of windows
 plots_windows <- solapply(seq_along(X_0), function(i) 
-  owin(xrange=c(X_0[i], X_0[i] + side_length), yrange=c(Y_0[i], Y_0[i] + side_length), unitname=unit_name))
+  owin(xrange=c(X_0[i], X_0[i] + plots_side), yrange=c(Y_0[i], Y_0[i] + plots_side), unitname=unit_name))
 # Coordinates of the plots in a dataframe
 plots_coords <- data.frame(Plot=seq_len(plots_n), X=X_0, Y=Y_0)
 ```
@@ -179,10 +174,10 @@ The plots are mapped:
 # plot(intersect.owin(spCommunity$window, union.owin(plots_windows)))
 
 # ggplot
-window_all <- data.frame(xmin = c(spCommunity$window$xrange[1], pmin(X_0, window_size-side_length)),
-                         xmax = c(spCommunity$window$xrange[2], pmin(X_0 + side_length, window_size)),
-                         ymin = c(spCommunity$window$yrange[1], pmin(Y_0, window_size-side_length)),
-                         ymax = c(spCommunity$window$yrange[2], pmin(Y_0 + side_length, window_size))
+window_all <- data.frame(xmin = c(spCommunity$window$xrange[1], pmin(X_0, window_size-plots_side)),
+                         xmax = c(spCommunity$window$xrange[2], pmin(X_0 + plots_side, window_size)),
+                         ymin = c(spCommunity$window$yrange[1], pmin(Y_0, window_size-plots_side)),
+                         ymax = c(spCommunity$window$yrange[2], pmin(Y_0 + plots_side, window_size))
                          )
 library("ggplot2")
 gg_plots <- ggplot() +
@@ -190,7 +185,7 @@ gg_plots <- ggplot() +
   coord_fixed()
 print(gg_plots)
 ```
-The sampling intensity is `r format(plots_n * side_length^2 / window_size^2 * 100, digits=3)`% of the total area.
+The sampling intensity is `r format(plots_n * plots_side^2 / window_size^2 * 100, digits=3)`% of the total area.
 
 Any plot can be mapped with its content.
 The first one is:
@@ -211,17 +206,17 @@ Its value is `TRUE` when a tree is in the plot.
 If the plot is partly outside the window, it is moved inside.
 
 ```{r}
-plot_trees <- function(spCommunity, side_length, x_0, y_0) {
+plot_trees <- function(spCommunity, plots_side, x_0, y_0) {
   x_max <- spCommunity$window$xrange[2]
   y_max <- spCommunity$window$yrange[2]
 
   # The plot must be in the window
-  if ((x_0 + side_length) > x_max) x_0 <- x_max - side_length
-  if ((y_0 + side_length) > y_max) y_0 <- y_max - side_length
+  if ((x_0 + plots_side) > x_max) x_0 <- x_max - plots_side
+  if ((y_0 + plots_side) > y_max) y_0 <- y_max - plots_side
 
   # Trees in the plot
-  is_in <- (spCommunity$x >= x_0) & (spCommunity$x <= x_0 + side_length) &
-      (spCommunity$y >= y_0) & (spCommunity$y <= y_0 + side_length)
+  is_in <- (spCommunity$x >= x_0) & (spCommunity$x <= x_0 + plots_side) &
+      (spCommunity$y >= y_0) & (spCommunity$y <= y_0 + plots_side)
   return(is_in)
 }
 ```
@@ -236,7 +231,7 @@ plots_inventory <- data.frame()
 for (i in seq_len(plots_n)) {
   plot_inventory <- data.frame(
     Plot = i, 
-    Tree = spCommunity$marks$PointType[plot_trees(spCommunity, side_length, X_0[i], Y_0[i])]
+    Tree = spCommunity$marks$PointType[plot_trees(spCommunity, plots_side, X_0[i], Y_0[i])]
     )
   plots_inventory <- rbind(plots_inventory, plot_inventory)
 }
@@ -349,23 +344,55 @@ Richness(colSums(plots_abundances[, -1]))
 
 # Turing's relation
 
+Turing's relation is used to derived the number of singletons $s_1$ from $s_2$, $s_3$ and $s_4$ after @Chiu2016.
+
+The `turing()` function estimates that number of singletons to compare it to the observed one.
+
 ```{r}
-turing <- function(distribution) {
+turing <- function(distribution, Cazzola2022=FALSE, verbose = TRUE) {
   n <- sum(distribution)
   s_1 <- sum(distribution == 1)
-  cat("Actual number of singletons:", s_1, "\n")
+  if (verbose) cat("Actual number of singletons:", s_1, "\n")
   s_2 <- sum(distribution == 2)
   s_3 <- sum(distribution == 3)
   s_4 <- sum(distribution == 4)
-  s_1_hat <- (n-1) /n * 2 *s_2 * (5 *s_2 /6 /s_3 - s_3 /4 /s_4)
-  cat("Expected number of singletons:", s_1_hat, "\n")
+  # Chao 2016 : s_1_hat <- (4 *s_2^2 /3 /s_3 - 2 * s_2 * s_3 /4 /s_4)
+  # Keep n in Chao 2016
+  s_1_hat <- 4 * (n-2) *s_2^2 /3 /(n-1) /s_3 - 2 * (n-3) *s_2 * s_3 /4 /(n-1) /s_4
+  # Cazzola 2022
+  if (Cazzola2022)
+    s_1_hat <- (n-1) /n * 2 *s_2 * (5 *s_2 /6 /s_3 - s_3 /4 /s_4)
+  if (verbose) cat("Expected number of singletons:", s_1_hat, "\n")
   return(s_1_hat)
 }
+```
 
+The formula in @CazzollaGatti2022 differs from that of @Chiu2016.
+It is 
+$$\hat{s_1}=\frac{(n-1)}{n}\frac{2s_2^2}{3s_3} + \frac{(n-1)}{n} 2s_2 (\frac{2s_2^2}{2s_3}-\frac{s_3}{4s_4})$$
+but the original equation is [eq. 5 of @Chiu2016 rederived without assuming n is large]:
+$$\hat{s_1}=\frac{(n-2)}{n-1}\frac{2s_2^2}{3s_3} + \frac{(n-2)}{n-1} 2s_2 (\frac{2s_2^2}{3s_3}-\frac{s_3}{4s_4}).$$
+The denominator of the first term of the second-to-last fraction is $3s_3$, not $2s_3$.
+
+The estimation differs quite much, eg. in a lognormal community:
+```{r}
+# Single community
+community_lnorm <- rCommunity(1, size = 1000)
+# Original equation
+turing(community_lnorm, Cazzola2022 = FALSE)
+# 3 instead of 2
+turing(community_lnorm, Cazzola2022 = TRUE)
+```
+
+In both cases, the number of estimated singletons is far from the observed value.
+
+Applied to the simulated community the estimation is correct for the abundance data but not for the aggregated data:
+
+```{r}
 # Abundances
 turing(colSums(plots_abundances[, -1]))
 
-# Aggregated
+# Aggregated data, 64 cells
 abundances_aggregated <- abundance_gridded(plots_abundances,
                                            plots_coords,
                                            grid_size = window_size/ 2^3,
@@ -376,6 +403,25 @@ turing(occurences)
 ```
 
 
+A simulation of log-normal communities shows poor empirical relations, both on simulated, small communities or on samples of a large community.
 
+```{r}
+# Small communities
+simln <- rCommunity(1000, size=plots_side^2*plots_n*trees_n_per_area, Distribution = "lnorm", S=species_n)
+Singletons <- apply(simln$Nsi, 2, function(distribution) sum(distribution == 1))
+Estimated <- apply(simln$Nsi, 2, turing, verbose=FALSE)
+plot(x=Singletons, y=Estimated)
+summary(lm(Estimated ~ Singletons))
+
+# Large community
+simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=species_n)
+# Samples
+samples <- rmultinom(1000, size = plots_side^2*plots_n*trees_n_per_area, prob = as.ProbaVector(simln))
+Singletons <- apply(samples, 2, function(distribution) sum(distribution == 1))
+Estimated <- apply(samples, 2, turing, verbose=FALSE)
+plot(Estimated ~ Singletons)
+summary(lm(Estimated ~ Singletons))
+
+```
 
 `r if (!knitr:::is_latex_output()) '# References {-}'`
