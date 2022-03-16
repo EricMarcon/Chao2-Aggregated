@@ -124,7 +124,7 @@ The simulation may take time and memory over 100,000 trees.
 
 ```{r}
 library("SpatDiv")
-window_size <- 20000
+window_size <- 2000
 unit_name <- c("meter", "meters")
 trees_n_per_area <- 500/10000
 species_n <- 500
@@ -156,7 +156,7 @@ Their parameters are:
 # Plot side length
 side_length <- 30
 # Number of plots
-plots_n <- 200
+plots_n <- 20
 ```
 
 Random coordinates are drawn:
@@ -242,12 +242,14 @@ for (i in seq_len(plots_n)) {
 }
 
 # Transform the inventory into an abundance table
+library("tidyverse")
 plots_inventory %>%
   group_by(Plot, Tree) %>%
   summarise(Abundance = n()) %>%
   pivot_wider(names_from = Tree, values_from = Abundance, values_fill=0) ->
   plots_abundances
 ```
+
 
 # Aggregation
 
@@ -267,11 +269,10 @@ group_plots <- function(plots, grid_x, grid_y) {
 }
 ```
 
-The `richness_gridded()` function return the estimation of richness by the Chao2 estimator after aggregating the plots of each cell of the grid.
 
 ```{r}
-richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
-
+abundance_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
+  
   grid_x <- seq(x_min, x_max, by=grid_size)
   grid_y <- seq(y_min, y_max, by=grid_size)
   plots_gridded <- cbind(plots["Plot"], group_plots(plots, grid_x, grid_y))
@@ -281,10 +282,21 @@ richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_m
     select(-Plot) %>%
     group_by(x_grid, y_grid) %>%
     summarise_all(sum) ->
-    plots_aggregated
+    abundances_aggregated
+  
+  return(abundances_aggregated)
+}
+```
 
-  occurences <- apply(plots_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
-  n <- nrow(plots_aggregated)
+The `richness_gridded()` function return the estimation of richness by the Chao2 estimator after aggregating the plots of each cell of the grid.
+
+```{r}
+richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
+
+  abundances_aggregated <- abundance_gridded(abundances, plots, grid_size, x_min, x_max, y_min, y_max)
+  occurences <- apply(abundances_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
+
+  n <- nrow(abundances_aggregated)
   s_obs <- sum(occurences > 0)
   s_1 <- sum(occurences == 1)
   s_2 <- sum(occurences == 2)
@@ -314,7 +326,6 @@ sapply(1:5, function(n) richness_gridded(plots_abundances,
                                          x_max = window_size, 
                                          y_max = window_size)
        )
-
 ```
 
 The estimation is very stable.
@@ -334,6 +345,37 @@ The estimation of richness could be made directly from the abundance data:
 ```{r}
 Richness(colSums(plots_abundances[, -1]))
 ```
+
+
+# Turing's relation
+
+```{r}
+turing <- function(distribution) {
+  n <- sum(distribution)
+  s_1 <- sum(distribution == 1)
+  cat("Actual number of singletons:", s_1, "\n")
+  s_2 <- sum(distribution == 2)
+  s_3 <- sum(distribution == 3)
+  s_4 <- sum(distribution == 4)
+  s_1_hat <- (n-1) /n * 2 *s_2 * (5 *s_2 /6 /s_3 - s_3 /4 /s_4)
+  cat("Expected number of singletons:", s_1_hat, "\n")
+  return(s_1_hat)
+}
+
+# Abundances
+turing(colSums(plots_abundances[, -1]))
+
+# Aggregated
+abundances_aggregated <- abundance_gridded(plots_abundances,
+                                           plots_coords,
+                                           grid_size = window_size/ 2^3,
+                                           x_max = window_size,
+                                           y_max = window_size)
+occurences <- apply(abundances_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
+turing(occurences)
+```
+
+
 
 
 `r if (!knitr:::is_latex_output()) '# References {-}'`
