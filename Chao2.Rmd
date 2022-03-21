@@ -356,22 +356,22 @@ turing <- function(distribution, Cazzola2022=FALSE, verbose = TRUE) {
   s_2 <- sum(distribution == 2)
   s_3 <- sum(distribution == 3)
   s_4 <- sum(distribution == 4)
-  # Chao 2016 : s_1_hat <- (4 *s_2^2 /3 /s_3 - 2 * s_2 * s_3 /4 /s_4)
-  # Keep n in Chao 2016
-  s_1_hat <- 4 * (n-2) *s_2^2 /3 /(n-1) /s_3 - 2 * (n-3) *s_2 * s_3 /4 /(n-1) /s_4
+  # Chiu at al. 2016 : s_1_hat <- (4 *s_2^2 /3 /s_3 - 2 * s_2 * s_3 /4 /s_4)
+  # Keep n in Chiu at al. 2016
+  s_1_hat <- 4 * (n-2) *s_2^2 /3 /(n-1) /s_3 - (n-3) *s_2 * s_3 /2 /(n-1) /s_4
   # Cazzola 2022
   if (Cazzola2022)
     s_1_hat <- (n-1) /n * 2 *s_2 * (5 *s_2 /6 /s_3 - s_3 /4 /s_4)
   if (verbose) cat("Expected number of singletons:", s_1_hat, "\n")
-  return(s_1_hat)
+  return(invisible(s_1_hat))
 }
 ```
 
 The formula in @CazzollaGatti2022 differs from that of @Chiu2016.
 It is 
-$$\hat{s_1}=\frac{(n-1)}{n}\frac{2s_2^2}{3s_3} + \frac{(n-1)}{n} 2s_2 (\frac{2s_2^2}{2s_3}-\frac{s_3}{4s_4})$$
+$$\hat{s_1}=\frac{(n-1)}{n}\frac{2s_2^2}{3s_3} + \frac{(n-1)}{n} 2s_2 \left(\frac{2s_2^2}{2s_3}-\frac{s_3}{4s_4}\right)$$
 but the original equation is [eq. 5 of @Chiu2016 rederived without assuming n is large]:
-$$\hat{s_1}=\frac{(n-2)}{n-1}\frac{2s_2^2}{3s_3} + \frac{(n-2)}{n-1} 2s_2 (\frac{2s_2^2}{3s_3}-\frac{s_3}{4s_4}).$$
+$$\hat{s_1}=\frac{(n-2)}{n-1}\frac{2s_2^2}{3s_3} + \frac{(n-2)}{n-1} 2s_2 \left(\frac{2s_2^2}{3s_3}-\frac{s_3}{4s_4}\right).$$
 The denominator of the first term of the second-to-last fraction is $3s_3$, not $2s_3$.
 
 The estimation differs quite much, eg. in a lognormal community:
@@ -421,7 +421,6 @@ Singletons <- apply(samples, 2, function(distribution) sum(distribution == 1))
 Estimated <- apply(samples, 2, turing, verbose=FALSE)
 plot(Estimated ~ Singletons)
 summary(lm(Estimated ~ Singletons))
-
 ```
 
 `r if (!knitr:::is_latex_output()) '# References {-}'`
