@@ -344,9 +344,11 @@ Richness(colSums(plots_abundances[, -1]))
 
 # Turing's relation
 
+## Estimating the number of singletons
+
 Turing's relation is used to derived the number of singletons $s_1$ from $s_2$, $s_3$ and $s_4$ after @Chiu2016.
 
-The `turing()` function estimates that number of singletons to compare it to the observed one.
+The `turing()` function estimates that number of singletons to compare it to the observed one in simulated inventories.
 
 ```{r}
 turing <- function(distribution, Cazzola2022=FALSE, verbose = TRUE) {
@@ -402,6 +404,7 @@ occurences <- apply(abundances_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
 turing(occurences)
 ```
 
+## Empirical validation
 
 A simulation of log-normal communities shows poor empirical relations, both on simulated, small communities or on samples of a large community.
 
@@ -411,6 +414,7 @@ simln <- rCommunity(1000, size=plots_side^2*plots_n*trees_n_per_area, Distributi
 Singletons <- apply(simln$Nsi, 2, function(distribution) sum(distribution == 1))
 Estimated <- apply(simln$Nsi, 2, turing, verbose=FALSE)
 plot(x=Singletons, y=Estimated)
+abline(a=0, b=1, col="red")
 summary(lm(Estimated ~ Singletons))
 
 # Large community
@@ -420,7 +424,97 @@ samples <- rmultinom(1000, size = plots_side^2*plots_n*trees_n_per_area, prob = 
 Singletons <- apply(samples, 2, function(distribution) sum(distribution == 1))
 Estimated <- apply(samples, 2, turing, verbose=FALSE)
 plot(Estimated ~ Singletons)
+abline(a=0, b=1, col="red")
 summary(lm(Estimated ~ Singletons))
 ```
+
+The estimation of $\alpha_r$ with Turing's formula is not better.
+
+```{r}
+# Turing's formula.
+alpha_r <- function(distribution, sample, r) {
+  f_r <- sum(sample == r)
+  f_rplus1 <- sum(sample == r+1)
+  n <- sum(sample)
+  alpha_r_sim <- c(
+    Actual = mean(as.ProbaVector(distribution)[sample == r]), 
+    Turing = (r+1) * f_rplus1 / ((n-r) * f_r + (r+1) * f_rplus1)
+  )
+  return(alpha_r_sim)
+  # Return a vector: actual and estimated alpha_r
+}
+
+```
+
+A large community is simulated and many samples in it.
+
+```{r}
+# Large community
+simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=species_n)
+# Many samples
+samples <- rmultinom(1000, size=1000, p_simln)
+```
+
+The actual and estimated values of $\alpha_r$ are calculated:
+```{r}
+# Plot actual vs estimated alpha_r
+compare_alpha_r <- function(distribution, sample, r) {
+  alpha_rsim <- t(apply(samples, 2, function(sample) alpha_r(distribution, sample, r)))
+  plot(alpha_rsim, main=paste("r=", r))
+  abline(a=0, b=1, col="red")
+}
+
+sapply(1:3, function(r) compare_alpha_r(distribution, sample, r))
+```
+## Cause for the poor predictions
+
+This is not due to the approximation in the derivation of the improved Turing formula [@Chiu2014a, eq. 7a]: 
+```{r}
+# Evaluate Chiu at al. 2014 approximation
+odd_approximation <- function(distribution, sample, r) {
+  distribution_p <- as.ProbaVector(distribution)
+  p_r <- distribution_p[sample == r]
+  odd_r_sum <- sum(p_r/(1-p_r))
+  odd_r_mean <- mean(p_r)/mean(1-p_r) * sum(sample == r)
+  return(c(odd_r_sum, odd_r_mean))
+}
+
+# Large community
+simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=species_n)
+sample <- rmultinom(1, size=1000, p_simln)
+
+# Approximation
+odd_approximation(simln, sample, 1)
+odd_approximation(simln, sample, 2)
+odd_approximation(simln, sample, 3)
+odd_approximation(simln, sample, 4)
+```
+
+## Appropriate application
+
+Turing's relation does not allow to predict the observed number of singletons of a specific sample.
+It is made to estimate the expected number of singletons.
+The following test compares the mean estimation to the mean number of observed singletons over 1000 simulations of samples of increasing size in a large community.
+
+```{r}
+estimate_f1 <- function(sample_size) {
+  # Large community
+  simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=300)
+  # Many samples
+  samples <- rmultinom(1000, size=sample_size, p_simln)
+  # Actual and estimated number of singletons
+  Singletons <- mean(apply(samples, 2, function(distribution) sum(distribution == 1)))
+  Estimated <- mean(apply(samples, 2, turing, verbose=FALSE))
+  return(c(Singletons, Estimated))
+}
+
+f1_estimation <- sapply(seq(500, 5000, by=500), estimate_f1)
+plot(t(f1_estimation), xlab = "Mean actual number of singletons", ylab = "mean estimated number of singletons")
+abline(a=0, b=1, col="red")
+```
+
+The larger the samples (from 500 to 5000 individuals in a 300-species community), the less singletons.
+The estimation is quite good on average.
+
 
 `r if (!knitr:::is_latex_output()) '# References {-}'`
