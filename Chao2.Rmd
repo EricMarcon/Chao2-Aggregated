@@ -452,7 +452,7 @@ A large community is simulated and many samples in it.
 # Large community
 simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=species_n)
 # Many samples
-samples <- rmultinom(1000, size=1000, p_simln)
+samples <- rmultinom(1000, size=1000, simln)
 ```
 
 The actual and estimated values of $\alpha_r$ are calculated:
@@ -464,7 +464,7 @@ compare_alpha_r <- function(distribution, sample, r) {
   abline(a=0, b=1, col="red")
 }
 
-sapply(1:3, function(r) compare_alpha_r(distribution, sample, r))
+sapply(1:3, function(r) compare_alpha_r(simln, sample, r))
 ```
 ## Cause for the poor predictions
 
@@ -481,7 +481,7 @@ odd_approximation <- function(distribution, sample, r) {
 
 # Large community
 simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=species_n)
-sample <- rmultinom(1, size=1000, p_simln)
+sample <- rmultinom(1, size=1000, simln)
 
 # Approximation
 odd_approximation(simln, sample, 1)
@@ -501,7 +501,7 @@ estimate_f1 <- function(sample_size) {
   # Large community
   simln <- rCommunity(1, size=1E6, Distribution = "lnorm", S=300)
   # Many samples
-  samples <- rmultinom(1000, size=sample_size, p_simln)
+  samples <- rmultinom(1000, size=sample_size, simln)
   # Actual and estimated number of singletons
   Singletons <- mean(apply(samples, 2, function(distribution) sum(distribution == 1)))
   Estimated <- mean(apply(samples, 2, turing, verbose=FALSE))
