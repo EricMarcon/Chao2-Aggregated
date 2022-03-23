@@ -119,7 +119,7 @@ The simulation may take time and memory over 100,000 trees.
 
 ```{r}
 library("SpatDiv")
-window_size <- 2000
+window_size <- 20000
 unit_name <- c("meter", "meters")
 trees_n_per_area <- 500/10000
 species_n <- 500
@@ -151,7 +151,7 @@ Their parameters are:
 # Plot side length
 plots_side <- 30
 # Number of plots
-plots_n <- 20
+plots_n <- 50
 ```
 
 Random coordinates are drawn:
@@ -160,11 +160,17 @@ Random coordinates are drawn:
 # Draw random plots
 X_0 <- runif(plots_n, max = window_size)
 Y_0 <- runif(plots_n, max = window_size)
+# Push the plots into the window
+X_min <- pmin(X_0, window_size-plots_side)
+X_max <- pmin(X_0 + plots_side, window_size)
+Y_min <- pmin(Y_0, window_size-plots_side)
+Y_max <- pmin(Y_0 + plots_side, window_size)
 # List of windows
 plots_windows <- solapply(seq_along(X_0), function(i) 
-  owin(xrange=c(X_0[i], X_0[i] + plots_side), yrange=c(Y_0[i], Y_0[i] + plots_side), unitname=unit_name))
+  owin(xrange=c(X_min[i], X_max[i]), yrange=c(Y_min[i], Y_max[i]),
+       unitname=unit_name))
 # Coordinates of the plots in a dataframe
-plots_coords <- data.frame(Plot=seq_len(plots_n), X=X_0, Y=Y_0)
+plots_coords <- data.frame(Plot=seq_len(plots_n), X=X_min, Y=Y_min)
 ```
 
 The plots are mapped:
@@ -174,10 +180,10 @@ The plots are mapped:
 # plot(intersect.owin(spCommunity$window, union.owin(plots_windows)))
 
 # ggplot
-window_all <- data.frame(xmin = c(spCommunity$window$xrange[1], pmin(X_0, window_size-plots_side)),
-                         xmax = c(spCommunity$window$xrange[2], pmin(X_0 + plots_side, window_size)),
-                         ymin = c(spCommunity$window$yrange[1], pmin(Y_0, window_size-plots_side)),
-                         ymax = c(spCommunity$window$yrange[2], pmin(Y_0 + plots_side, window_size))
+window_all <- data.frame(xmin = c(spCommunity$window$xrange[1], X_min),
+                         xmax = c(spCommunity$window$xrange[2], X_max),
+                         ymin = c(spCommunity$window$yrange[1], Y_min),
+                         ymax = c(spCommunity$window$yrange[2], Y_max)
                          )
 library("ggplot2")
 gg_plots <- ggplot() +
@@ -203,17 +209,8 @@ autoplot(spCommunity[plot_to_draw])
 The inventory of a plot is made by the `plot_trees()` function which return a boolean vector for all the trees of the community.
 Its value is `TRUE` when a tree is in the plot.
 
-If the plot is partly outside the window, it is moved inside.
-
 ```{r}
 plot_trees <- function(spCommunity, plots_side, x_0, y_0) {
-  x_max <- spCommunity$window$xrange[2]
-  y_max <- spCommunity$window$yrange[2]
-
-  # The plot must be in the window
-  if ((x_0 + plots_side) > x_max) x_0 <- x_max - plots_side
-  if ((y_0 + plots_side) > y_max) y_0 <- y_max - plots_side
-
   # Trees in the plot
   is_in <- (spCommunity$x >= x_0) & (spCommunity$x <= x_0 + plots_side) &
       (spCommunity$y >= y_0) & (spCommunity$y <= y_0 + plots_side)
@@ -231,7 +228,7 @@ plots_inventory <- data.frame()
 for (i in seq_len(plots_n)) {
   plot_inventory <- data.frame(
     Plot = i, 
-    Tree = spCommunity$marks$PointType[plot_trees(spCommunity, plots_side, X_0[i], Y_0[i])]
+    Tree = spCommunity$marks$PointType[plot_trees(spCommunity, plots_side, X_min[i], Y_min[i])]
     )
   plots_inventory <- rbind(plots_inventory, plot_inventory)
 }
@@ -388,7 +385,7 @@ turing(community_lnorm, Cazzola2022 = TRUE)
 
 In both cases, the number of estimated singletons is far from the observed value.
 
-Applied to the simulated community the estimation is correct for the abundance data but not for the aggregated data:
+Applied to the simulated community the estimation is sometimes correct but sometimes not, depending on the simulation:
 
 ```{r}
 # Abundances
