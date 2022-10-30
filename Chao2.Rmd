@@ -280,7 +280,7 @@ abundance_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_
 }
 ```
 
-The `richness_gridded()` function return the estimation of richness by the Chao2 estimator after aggregating the plots of each cell of the grid.
+The `richness_gridded()` function returns the estimation of richness by the Chao2 estimator after aggregating the plots of each cell of the grid.
 
 ```{r}
 richness_gridded <- function(abundances, plots, grid_size, x_min=0, x_max=1, y_min=0, y_max=1) {
@@ -309,6 +309,7 @@ richness_gridded(plots_abundances,
                  grid_size = window_size/2,
                  x_max = window_size, y_max = window_size)
 ```
+
 The sensitivity to the grid size is evaluated by dividing it by 2 several times (from 1/2 to 1/32 of the community size).
 
 ```{r}
@@ -368,9 +369,9 @@ turing <- function(distribution, Cazzola2022=FALSE, verbose = TRUE) {
 
 The formula in @CazzollaGatti2022 differs from that of @Chiu2016.
 It is 
-$$\hat{s_1}=\frac{(n-1)}{n}\frac{2s_2^2}{3s_3} + \frac{(n-1)}{n} 2s_2 \left(\frac{2s_2^2}{2s_3}-\frac{s_3}{4s_4}\right)$$
+$$\hat{s_1}=\frac{(n-1)}{n}\frac{2s_2^2}{3s_3} + \frac{(n-1)}{n} 2s_2 \left(\frac{s_2}{2s_3}-\frac{s_3}{4s_4}\right)$$
 but the original equation is [eq. 5 of @Chiu2016 rederived without assuming $n$ is large]:
-$$\hat{s_1}=\frac{(n-2)}{n-1}\frac{2s_2^2}{3s_3} + \frac{(n-2)}{n-1} 2s_2 \left(\frac{2s_2^2}{3s_3}-\frac{s_3}{4s_4}\right).$$
+$$\hat{s_1}=\frac{(n-2)}{n-1}\frac{2s_2^2}{3s_3} + \frac{(n-2)}{n-1} 2s_2 \left(\frac{s_2}{3s_3}-\frac{s_3}{4s_4}\right).$$
 The denominator of the first term of the second-to-last fraction is $3s_3$, not $2s_3$.
 
 The estimation differs quite much, e.g. in a log-normal community:
@@ -513,6 +514,72 @@ abline(a=0, b=1, col="red")
 
 The larger the samples (from 500 to 5000 individuals in a 300-species community), the less singletons.
 The estimation is quite good on average.
+
+
+## Application to the data
+
+The `richness_gridded()` function is modified to use the number of singletons derived by Turing's relation rather than the observed data.
+The argument `turing_f1` is added for that purpose.
+
+```{r}
+richness_gridded <- function(
+    abundances, 
+    plots, 
+    grid_size, 
+    x_min=0, 
+    x_max=1, 
+    y_min=0, 
+    y_max=1,
+    turing_f1 = FALSE) {
+
+  abundances_aggregated <- abundance_gridded(
+    abundances, plots, grid_size, x_min, x_max, y_min, y_max
+  )
+  occurences <- apply(abundances_aggregated[, -(1:3)] , 2, function(x) sum(x>0))
+
+  n <- nrow(abundances_aggregated)
+  s_obs <- sum(occurences > 0)
+  s_2 <- sum(occurences == 2)
+  s_3 <- sum(occurences == 3)
+  s_4 <- sum(occurences == 4)
+  if (turing_f1) {
+    s_1 <- 4 * (n - 2) * s_2 ^ 2 / 3 / (n - 1) / s_3 - 
+      (n - 3) * s_2 * s_3 / 2 / (n - 1) / s_4
+  } else {
+    s_1 <- sum(occurences == 1)
+  }
+  s_chao2 <- ifelse(
+    s_2 > 0,
+    s_obs + (n - 1) * s_1 ^ 2 / 2 / n / s_2, 
+    s_obs + (n - 1) * s_1 * (s_1 - 1) / 2 / n 
+  )
+  return(s_chao2)
+}
+```
+
+The estimation of the number of species with a 4-cell grid is:
+
+```{r}
+# Example
+richness_gridded(plots_abundances,
+                 plots_coords,
+                 grid_size = window_size/2,
+                 x_max = window_size, y_max = window_size,
+                 turing_f1 = TRUE)
+```
+The sensitivity to the grid size is evaluated by dividing it by 2 several times (from 1/2 to 1/32 of the community size).
+
+```{r}
+sapply(1:5, function(n) richness_gridded(plots_abundances,
+                                         plots_coords,
+                                         grid_size = window_size/ 2^n,
+                                         x_max = window_size, 
+                                         y_max = window_size,
+                                         turing_f1 = TRUE)
+       )
+```
+
+These values are to be compared with those obtained above.
 
 
 `r if (!knitr:::is_latex_output()) '# References {-}'`
